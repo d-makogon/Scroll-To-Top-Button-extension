@@ -13,6 +13,7 @@ const defaultConfig = Map( {
   entry: {
     'manifest': './src/manifest.json',
     'background': './src/background/index.js',
+    'service-worker': './src/service-worker.js',
     'content-scripts': './src/content-scripts/index.js',
     'options': './src/options/index.js',
     'shared/elements/scroll-to-top-button': './src/shared/elements/scroll-to-top-button.css',

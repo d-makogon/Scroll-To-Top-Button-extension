@@ -1,5 +1,5 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
 
   "default_locale": "en_US",
   "name": "__MSG_extensionName__",
@@ -21,31 +21,21 @@
   ],
 
   "optional_permissions": [
-    "<all_urls>",
-    "*://*/*",
     "tabs"
   ],
 
+  "host_permissions": [],
+
+  "optional_host_permissions": [
+    "<all_urls>",
+    "*://*/*"
+  ],
+
   "background": {
-    "scripts": [
-      "global/js/browser-polyfill.min.js",
-      "global/js/bowser.js",
-      "global/js/punycode.min.js",
-      "global/js/global.js",
-      "global/js/event.js",
-      "global/js/utils.js",
-      "global/js/const.js",
-      "global/js/log.js",
-      "global/js/i18next/i18next.min.js",
-      "global/js/i18next/i18nextXHRBackend.js",
-      "shared/legacy/i18n.js",
-      "shared/legacy/context-menus.js",
-      "shared/legacy/background.js",
-      "background.js"
-    ]
+    "service_worker": "service-worker.js"
   },
 
-  "browser_action": {
+  "action": {
     "default_icon": {
       "16": "icons/Icon-16.png",
       "32": "icons/Icon-32.png"
@@ -53,10 +43,15 @@
   },
 
   "web_accessible_resources": [
-    "shared/elements/scroll-to-top-button.css",
-    "shared/buttons/buttons.css",
-    "shared/buttons/*.svg",
-    "content-scripts.css",
-    "*.json"
+    {
+      "resources": [
+        "shared/elements/scroll-to-top-button.css",
+        "shared/buttons/buttons.css",
+        "shared/buttons/*.svg",
+        "content-scripts.css",
+        "*.json"
+      ],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

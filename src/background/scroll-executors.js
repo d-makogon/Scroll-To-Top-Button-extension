@@ -10,6 +10,10 @@ import * as settingsHelpers from 'Shared/settings';
 
 import manifest from '@/manifest.json';
 
+const browserAction = ( browser?.browserAction ) ?
+  browserAction :
+  browser.action;
+
 const BUTTON_MODE_BASIC_TYPE = 'basic';
 const BUTTON_MODE_ADVANCED_TYPE = 'advanced';
 const BUTTON_MODE_EXPERT_TYPE = 'expert';
@@ -137,9 +141,9 @@ export async function setController( source, retriesCount, metadata ) {
 
   if ( buttonModeEmpty || settingsHelpers.isBasicButtonMode( buttonMode ) ) {
     // @todo Move out
-    browser.browserAction.setPopup( BROWSER_ACTION_NO_POPUP );
-    browser.browserAction.setTitle( await getBrowserActionTitle( BUTTON_MODE_BASIC_TYPE ) );
-    browser.browserAction.onClicked.removeListener( injectAllFiles );
+    browserAction.setPopup( BROWSER_ACTION_NO_POPUP );
+    browserAction.setTitle( await getBrowserActionTitle( BUTTON_MODE_BASIC_TYPE ) );
+    browserAction.onClicked.removeListener( injectAllFiles );
 
     let browserActionClickHandler;
 
@@ -154,24 +158,24 @@ export async function setController( source, retriesCount, metadata ) {
       // @todo Notify user and fail?
     }
 
-    browser.browserAction.onClicked.addListener( browserActionClickHandler );
+    browserAction.onClicked.addListener( browserActionClickHandler );
     browser.tabs.onUpdated.removeListener( setContentScriptAsController );
   }
   else {
-    browser.browserAction.onClicked.removeListener( injectScrollToTopOnlyBasicLogic );
-    browser.browserAction.onClicked.removeListener( injectScrollToBottomOnlyBasicLogic );
+    browserAction.onClicked.removeListener( injectScrollToTopOnlyBasicLogic );
+    browserAction.onClicked.removeListener( injectScrollToBottomOnlyBasicLogic );
 
     if ( settingsHelpers.isAdvancedButtonMode( buttonMode ) ) {
-      browser.browserAction.setPopup( BROWSER_ACTION_NO_POPUP );
-      browser.browserAction.setTitle( await getBrowserActionTitle( BUTTON_MODE_ADVANCED_TYPE ) );
+      browserAction.setPopup( BROWSER_ACTION_NO_POPUP );
+      browserAction.setTitle( await getBrowserActionTitle( BUTTON_MODE_ADVANCED_TYPE ) );
       // @todo Don't inject the second time.
-      browser.browserAction.onClicked.addListener( ( { id: tabId, url } ) => injectAllFiles( tabId, url ) );
+      browserAction.onClicked.addListener( ( { id: tabId, url } ) => injectAllFiles( tabId, url ) );
       browser.tabs.onUpdated.removeListener( setContentScriptAsController );
     }
     // Expert mode & has permissions
     else if ( await permissions.hasPermissions() ) {
-      browser.browserAction.setPopup( BROWSER_ACTION_POPUP );
-      browser.browserAction.setTitle( await getBrowserActionTitle( BUTTON_MODE_EXPERT_TYPE ) );
+      browserAction.setPopup( BROWSER_ACTION_POPUP );
+      browserAction.setTitle( await getBrowserActionTitle( BUTTON_MODE_EXPERT_TYPE ) );
       browser.tabs.onUpdated.addListener( setContentScriptAsController );
     }
     // User who had had version 8 and hasn't granted the permissions again or revoked them. Or, something went wrong with the required permissions. Or, somebody tampered with the settings in the storage.
@@ -232,7 +236,7 @@ function setBrowserActionIcon( pointingUp ) {
    */
 
   try {
-    browser.browserAction.setIcon( {
+    browserAction.setIcon( {
       path: {
         19: icon16,
         38: icon32,
@@ -240,7 +244,7 @@ function setBrowserActionIcon( pointingUp ) {
     } );
   }
   catch ( error ) {
-    browser.browserAction.setIcon( {
+    browserAction.setIcon( {
       path: {
         16: icon16,
         32: icon32,
@@ -249,17 +253,17 @@ function setBrowserActionIcon( pointingUp ) {
   }
 }
 
-function injectScrollToTopOnlyBasicLogic( { url } ) {
-  injectBasicLogic( SCROLL_TO_TOP_ONLY_BASIC_BUTTON_MODE_SCRIPT, SCROLL_TO_TOP_ONLY_BASIC_BUTTON_MODE_SHORT_NAME, url );
+function injectScrollToTopOnlyBasicLogic( { id, url } ) {
+  injectBasicLogic( SCROLL_TO_TOP_ONLY_BASIC_BUTTON_MODE_SCRIPT, SCROLL_TO_TOP_ONLY_BASIC_BUTTON_MODE_SHORT_NAME, url, id );
 }
 
-function injectScrollToBottomOnlyBasicLogic( { url } ) {
-  injectBasicLogic( SCROLL_TO_BOTTOM_ONLY_BASIC_BUTTON_MODE_SCRIPT, SCROLL_TO_BOTTOM_ONLY_BASIC_BUTTON_MODE_SHORT_NAME, url );
+function injectScrollToBottomOnlyBasicLogic( { id, url } ) {
+  injectBasicLogic( SCROLL_TO_BOTTOM_ONLY_BASIC_BUTTON_MODE_SCRIPT, SCROLL_TO_BOTTOM_ONLY_BASIC_BUTTON_MODE_SHORT_NAME, url, id );
 }
 
-async function injectBasicLogic( script, shortName, url ) {
+async function injectBasicLogic( script, shortName, url, tabId ) {
   try {
-    const result = await browser.tabs.executeScript( script );
+    const result = await executeCode( tabId, script );
 
     handleContentScriptInjectionSuccess( JSON.stringify( script ), result );
   }
@@ -346,6 +350,47 @@ function isTabReady( info ) {
   return info.status === 'complete';
 }
 
+async function executeCode( tabId, details ) {
+  if ( browser.scripting?.executeScript ) {
+    const target = { tabId };
+    if ( details.allFrames ) {
+      target.allFrames = details.allFrames;
+    }
+    if ( details.code ) {
+      return await browser.scripting.executeScript( {
+        target,
+        func: new Function( details.code ),
+      } );
+    }
+    else if ( details.file ) {
+      return await browser.scripting.executeScript( {
+        target,
+        files: [ details.file ],
+      } );
+    }
+  }
+
+  if ( tabId ) {
+    return await browser.tabs.executeScript( tabId, details );
+  }
+  return await browser.tabs.executeScript( details );
+}
+
+async function insertCSSIntoTab( tabId, details ) {
+  if ( browser.scripting?.insertCSS ) {
+    const target = { tabId };
+    if ( details.allFrames ) {
+      target.allFrames = details.allFrames;
+    }
+    return await browser.scripting.insertCSS( {
+      target,
+      files: [ details.file ],
+    } );
+  }
+
+  return await browser.tabs.insertCSS( tabId, details );
+}
+
 async function injectFiles( { tabId, paths, jsFilePathPassed, url } ) {
   try {
     for ( const path of paths ) {
@@ -373,7 +418,9 @@ async function injectFile( { tabId, path, jsFilePathPassed, url } ) {
   injectionDetails.file = path;
 
   try {
-    const result = await browser.tabs[ jsFilePathPassed ? 'executeScript' : 'insertCSS' ]( tabId, injectionDetails );
+    const result = jsFilePathPassed ?
+      await executeCode( tabId, injectionDetails ) :
+      await insertCSSIntoTab( tabId, injectionDetails );
 
     handleContentScriptInjectionSuccess( path, result );
   }

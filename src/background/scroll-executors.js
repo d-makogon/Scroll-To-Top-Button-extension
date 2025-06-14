@@ -31,11 +31,24 @@ const BROWSER_ACTION_TITLE_TEMPLATE = {
 
 const SCROLL_TO_TOP_ONLY_BASIC_BUTTON_MODE_SCRIPT = {
   // @todo Cover non-scrollable window cases. See v6.5.2 and related.
-  code: 'window.scrollTo( 0, 0 )',
+  func() {
+    window.scrollTo( 0, 0 );
+  },
 };
 const SCROLL_TO_BOTTOM_ONLY_BASIC_BUTTON_MODE_SCRIPT = {
   // @todo Cover non-scrollable window cases. See v6.5.2 and related.
-  code: 'window.scrollTo( 0, Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.documentElement.clientHeight ) )',
+  func() {
+    window.scrollTo(
+      0,
+      Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight,
+        document.body.offsetHeight,
+        document.documentElement.offsetHeight,
+        document.documentElement.clientHeight
+      )
+    );
+  },
 };
 const SCROLL_TO_TOP_ONLY_BASIC_BUTTON_MODE_SHORT_NAME = 'top';
 const SCROLL_TO_BOTTOM_ONLY_BASIC_BUTTON_MODE_SHORT_NAME = 'bottom';
@@ -265,7 +278,9 @@ async function injectBasicLogic( script, shortName, url, tabId ) {
   try {
     const result = await executeCode( tabId, script );
 
-    handleContentScriptInjectionSuccess( JSON.stringify( script ), result );
+    const scriptDesc =
+      typeof script.func === 'function' ? script.func.toString() : JSON.stringify( script );
+    handleContentScriptInjectionSuccess( scriptDesc, result );
   }
   catch ( { message } ) {
     const detailedError = {
@@ -356,11 +371,29 @@ async function executeCode( tabId, details ) {
     if ( details.allFrames ) {
       target.allFrames = details.allFrames;
     }
-    if ( details.code ) {
+
+    if ( typeof details.func === 'function' ) {
       return await browser.scripting.executeScript( {
         target,
-        func: new Function( details.code ),
+        func: details.func,
       } );
+    }
+    else if ( typeof details.code === 'string' ) {
+      // Convert the code string into a temporary script file as described in
+      // https://medium.com/geekculture/how-to-use-eval-in-a-v3-chrome-extension-f21ca8c2160c
+      const blobUrl = URL.createObjectURL(
+        new Blob( [ details.code ], { type: 'text/javascript' } )
+      );
+
+      try {
+        return await browser.scripting.executeScript( {
+          target,
+          files: [ blobUrl ],
+        } );
+      }
+      finally {
+        URL.revokeObjectURL( blobUrl );
+      }
     }
     else if ( details.file ) {
       return await browser.scripting.executeScript( {

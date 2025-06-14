@@ -21,6 +21,7 @@ const
   , strModeOptionDomainId         = 'sttbModeOptionDomain'
 
   , strReloadActiveTabCtaId       = 'browserActionReloadActiveTabCta'
+  , strSandboxIframeId            = 'sandbox'
 
   , arrSettingsToGet              = [
                                         strConstDisabledDomainsSetting
@@ -33,6 +34,7 @@ var strTabId;
 var strTabUrl;
 var strTabDomain;
 var $reloadActiveTabCta;
+var $sandboxIframe;
 
 /* =============================================================================
 
@@ -51,12 +53,14 @@ var BrowserAction = {
   init : function() {
     // DOM is ready
     $reloadActiveTabCta = document.getElementById( strReloadActiveTabCtaId );
+    $sandboxIframe = document.getElementById( strSandboxIframeId );
 
     Page.hideInOpera();
     window.poziworldExtension.i18n.init()
       .then( Page.localize.bind( null, strPage ) )
       .then( window.poziworldExtension.incentive.setLinks );
     window.poziworldExtension.page.init( strPage );
+    BrowserAction.setupSandbox();
     BrowserAction.addEventListeners();
     BrowserAction.getActiveTabAddress();
   }
@@ -313,6 +317,29 @@ var BrowserAction = {
         Page.toggleElement( $reloadActiveTabCta, true );
       }
     }
+  }
+  ,
+
+  /**
+   * Set up sandboxed eval iframe communication.
+   */
+
+  setupSandbox: function () {
+    if ( !$sandboxIframe ) {
+      return;
+    }
+
+    window.runSandboxedEval = function ( code ) {
+      return new Promise( function ( resolve ) {
+        function handleMessage( event ) {
+          window.removeEventListener( 'message', handleMessage );
+          resolve( event.data );
+        }
+
+        window.addEventListener( 'message', handleMessage );
+        $sandboxIframe.contentWindow.postMessage( code, '*' );
+      } );
+    };
   }
   ,
 
